@@ -29,7 +29,6 @@ right_pwm = GPIO.PWM(12, 400)
 right_pwm.start(0)
 left_pwm = GPIO.PWM(13, 400)
 left_pwm.start(0)
-
 #FUNCTIONS
 def make_pulse(power):
     if power > 0:
