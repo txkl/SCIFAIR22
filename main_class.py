@@ -155,7 +155,7 @@ class Robot:
             t_prev_l_speed = 400
             t_LI = 0
 
-            while abs(left_enc.read()) < 480 * (y / 90) or time() - time_before > 7:
+            while abs(self.left_enc.read()) < 480 * (y / 90) or time() - time_before > 7:
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -174,7 +174,7 @@ class Robot:
 
             t_RI = 0
 
-            while abs(right_enc.read()) < 480 * (y / 90) or time() - time_before > 7:
+            while abs(self.right_enc.read()) < 480 * (y / 90) or time() - time_before > 7:
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -209,14 +209,18 @@ runtime_loop = True
 
 # main loop
 while runtime_loop:
-    robot.forward_PID(400)
-
+    #robot.forward_PID(400)
+    print("Loop running, stage",robot.stage)
     width, loc, info, size = robot.get_image()
+    print(info)
     if info != "null":
+        print("QR detected")
         if info == "target" and robot.stage != 1:
+            print("Target detected")
             robot.stage = 1
         if info == "left" or info == "right":
-            if width > 200:
+            if width > 100:
+                print("Turning")
                 robot.turn_PID(info, 90)
 
     # center on target
