@@ -123,7 +123,7 @@ class Robot:
                 sleep(.0001)
             mn = time()
             rs = 10 / (mn - bt)
-
+        
             return rs, mn
 
     def forward_PID(self, x):
@@ -148,14 +148,16 @@ class Robot:
     def turn_PID(self, x, y):
         mark_early = time()
         time_before = time()
-
+        y = 48*(y/90)
+        times_run = 0
+        
         if x == "left":
             t_alpha_l = -0.25
             t_alpha_r = 0.25
             t_prev_l_speed = 400
             t_LI = 0
 
-            while abs(self.left_enc.read()) < 480 * (y / 90) or time() - time_before > 7:
+            while abs(times_run <= y or time() - time_before > 7):
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -165,16 +167,16 @@ class Robot:
                         0.001 * (t_prev_l_speed - t_left_speed) / (t_mark_now - mark_early))) * 0.00134
 
                 t_prev_l_speed = t_left_speed
+                times_run += 1
 
         elif x == "right":
             t_alpha_l = 0.13
             t_alpha_r = -0.13
 
             t_prev_r_speed = 400
-
             t_RI = 0
 
-            while abs(self.right_enc.read()) < 480 * (y / 90) or time() - time_before > 7:
+            while abs(times_run <= y or time() - time_before > 7):
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -184,6 +186,9 @@ class Robot:
                         0.001 * (t_prev_r_speed - t_right_speed) / (t_mark_now - mark_early))) * 0.00134
 
                 t_prev_r_speed = t_right_speed
+                times_run += 1
+        self.left_stop()
+        self.right_stop()
         return time() - time_before
 
     @staticmethod
@@ -220,8 +225,14 @@ while runtime_loop:
             robot.stage = 1
         if info == "left" or info == "right":
             if width > 100:
-                print("Turning")
                 robot.turn_PID(info, 90)
+                sleep(1)
+                #even out the caster wheel
+                start_time = time()
+                while time()-start_time < 1:
+                    robot.forward_PID(100)
+                    robot.left_stop()
+                    robot.right_stop()
 
     # center on target
     if robot.stage == 1 and width != -1:
