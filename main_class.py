@@ -1,6 +1,6 @@
 # TIERNAN LINDAUER
 # LAST EDIT 11/23/21
-# LAST BACKED UP VERSION 11/23/21 11:48/24HR
+# LAST BACKED UP VERSION 11/23/21 14:51/24HR
 # OFFICIAL SCIFAIR MAIN PROGRAM
 
 
@@ -58,7 +58,8 @@ class Robot:
         self.RI = 0
         self.mark_now = 0
         self.delivery = False
-
+        self.flag_1 = False
+        
     # FUNCTIONS
 
     def get_image(self):
@@ -137,10 +138,11 @@ class Robot:
         self.drive_right_motor(self.alphaR)
 
         self.left_speed, self.mark_now = self.get_speed("left")
-        self.LI += 0.001 * ((x / 400) * 410 - self.left_speed)
-        self.alphaL += (0.05 * ((x / 400) * 410 - self.left_speed) + self.LI + (
+        self.LI += 0.001 * ((x / 400) * 400 - self.left_speed)
+        self.alphaL += (0.05 * ((x / 400) * 400 - self.left_speed) + self.LI + (
                 0.001 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
-
+        self.alphaL+=0.0025
+        
         self.right_speed, self.mark_now = self.get_speed("right")
         self.RI += 0.001 * ((x / 400) * 430 - self.right_speed)
         self.alphaR += (0.05 * ((x / 400) * 430 - self.right_speed) + self.RI + (
@@ -161,8 +163,21 @@ class Robot:
             t_alpha_r = 0.25
             t_prev_l_speed = 400
             t_LI = 0
+            while abs(times_run <= 5 or time() - time_before > 7):
+                self.drive_left_motor(t_alpha_l)
+                self.drive_right_motor(t_alpha_r)
 
-            while abs(times_run <= y or time() - time_before > 7):
+                t_left_speed, t_mark_now = self.get_speed("left")
+                t_LI += 0.001 * (400 - t_left_speed)
+                t_alpha_l -= (0.05 * (400 - t_left_speed) + t_LI + (
+                        0.001 * (t_prev_l_speed - t_left_speed) / (t_mark_now - mark_early))) * 0.00134
+
+                t_prev_l_speed = t_left_speed
+                times_run += 1
+            self.left_stop()
+            self.right_stop()
+            sleep(1)
+            while abs(times_run+3 <= y or time() - time_before > 7):
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -180,7 +195,21 @@ class Robot:
 
             t_prev_r_speed = 400
             t_RI = 0
-            while abs(times_run <= y or time() - time_before > 7):
+            while abs(times_run <= 5 or time() - time_before > 7):
+                self.drive_left_motor(t_alpha_l)
+                self.drive_right_motor(t_alpha_r)
+
+                t_right_speed, t_mark_now = self.get_speed("right")
+                t_RI += 0.001 * (400 - abs(t_right_speed))
+                t_alpha_r += 0.01 * (0.001 * abs(400 - abs(t_right_speed)) + t_RI + (
+                        0.001 * (t_prev_r_speed - t_right_speed) / (t_mark_now - mark_early))) * 0.00134
+
+                t_prev_r_speed = t_right_speed
+                times_run += 1
+            self.left_stop()
+            self.right_stop()
+            sleep(1)
+            while abs(times_run+3 <= y or time() - time_before > 7):
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -193,6 +222,8 @@ class Robot:
                 times_run += 1
         self.left_stop()
         self.right_stop()
+        self.left_enc.write()
+        self.right_enc.write()
         return time() - time_before
     
     def dump(self):
@@ -209,13 +240,20 @@ class Robot:
         self.cap.release()
         GPIO.cleanup()
 
-
+sleep(0)
 robot = Robot()
-runtime_loop = True
+runtime_loop = False
+for i in range(0,4):
+    robot.turn_PID("right",90)
+    sleep(2)
+    robot.turn_PID("left",90)
+    sleep(2)
 
 # main loop
 while runtime_loop:
-    #robot.forward_PID(400)
+    if robot.stage == 0:# and not robot.flag_1:
+        robot.forward_PID(400)
+    print(robot.alphaL,robot.alphaR)
     print("Loop running, stage",robot.stage)
     width, loc, info, size = robot.get_image()
     if info != "null":
@@ -225,15 +263,16 @@ while runtime_loop:
             robot.stage = 1
         if info == "left" or info == "right":
             print("turning ",info)
-            if width > 100:
+            if width > 150:
                 robot.turn_PID(info, 90)
                 sleep(1)
                 #even out the caster wheel
                 start_time = time()
                 while time()-start_time < 1:
-                    robot.forward_PID(100)
-                    robot.left_stop()
-                    robot.right_stop()
+                    robot.forward_PID(400)
+                robot.left_stop()
+                robot.right_stop()
+
 
     # center on target
     if robot.stage == 1 and width != -1:
@@ -285,7 +324,7 @@ while runtime_loop:
         robot.delivery = True
 
     if robot.stage == 5:
-        # DUMP CARGO
+        # DUMP CARGO 
         robot.dump()
         runtime_loop = False
 
@@ -295,7 +334,7 @@ while runtime_loop:
         robot.left_stop()
         robot.right_stop()
         runtime_loop = False
-        print(down," ",forward)
+        print("Distances: ",down," ",forward)
         print("EXITED DUE TO OBJECT/CLIFF DETECTED")
 
 robot.cleanup()
