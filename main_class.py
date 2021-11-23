@@ -16,7 +16,7 @@ GPIO.setwarnings(False)
 
 # ROBOT CLASS
 class Robot:
-    #ROBOT MAPPING
+    #ROBOT INPUT/OUTPUT MAPPING
         #23, 24: LEFT ENCODER
         #20, 21: RIGHT ENCODER
         #7, 8: FORWARD DISTANCE SENSOR
@@ -112,18 +112,18 @@ class Robot:
     def get_speed(self, x):
         #L/R ENCODER
         if x == "left":
-            self.left_enc.write()
+            offset = self.left_enc.read()
             bt = time()
-            while abs(self.left_enc.read()) < 10:
+            while abs(self.left_enc.read()-offset) < 10:
                 sleep(.0001)
             mn = time()
             ls = 10 / (mn - bt)
 
             return ls, mn
         elif x == "right":
-            self.right_enc.write()
+            offset = self.right_enc.read()
             bt = time()
-            while abs(self.right_enc.read()) < 10:
+            while abs(self.right_enc.read()-offset) < 10:
                 sleep(.0001)
             mn = time()
             rs = 10 / (mn - bt)
@@ -141,7 +141,7 @@ class Robot:
         self.LI += 0.001 * ((x / 400) * 400 - self.left_speed)
         self.alphaL += (0.05 * ((x / 400) * 400 - self.left_speed) + self.LI + (
                 0.001 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
-        self.alphaL+=0.0025
+        #self.alphaL+=0.0025
         
         self.right_speed, self.mark_now = self.get_speed("right")
         self.RI += 0.001 * ((x / 400) * 430 - self.right_speed)
@@ -155,15 +155,15 @@ class Robot:
         #DIRECTION, MAGNITUDE(DEGREES)
         mark_early = time()
         time_before = time()
-        y = 48*(y/90)
-        times_run = 0
+        y = 560*(y/90)
         
         if x == "left":
             t_alpha_l = -0.25
             t_alpha_r = 0.25
             t_prev_l_speed = 400
             t_LI = 0
-            while abs(times_run <= 5 or time() - time_before > 7):
+            offset = self.left_enc.read()
+            while abs(self.left_enc.read()-offset) < 50:
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -173,11 +173,10 @@ class Robot:
                         0.001 * (t_prev_l_speed - t_left_speed) / (t_mark_now - mark_early))) * 0.00134
 
                 t_prev_l_speed = t_left_speed
-                times_run += 1
             self.left_stop()
             self.right_stop()
             sleep(1)
-            while abs(times_run+3 <= y or time() - time_before > 7):
+            while abs(self.left_enc.read()-offset) < y-50 or time() - time_before > 7:
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -187,15 +186,16 @@ class Robot:
                         0.001 * (t_prev_l_speed - t_left_speed) / (t_mark_now - mark_early))) * 0.00134
 
                 t_prev_l_speed = t_left_speed
-                times_run += 1
 
         elif x == "right":
+            y-=40
             t_alpha_l = 0.13
             t_alpha_r = -0.13
 
             t_prev_r_speed = 400
             t_RI = 0
-            while abs(times_run <= 5 or time() - time_before > 7):
+            offset = self.right_enc.read()
+            while abs(self.left_enc.read()-offset) < 50:
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -205,11 +205,10 @@ class Robot:
                         0.001 * (t_prev_r_speed - t_right_speed) / (t_mark_now - mark_early))) * 0.00134
 
                 t_prev_r_speed = t_right_speed
-                times_run += 1
             self.left_stop()
             self.right_stop()
             sleep(1)
-            while abs(times_run+3 <= y or time() - time_before > 7):
+            while abs(self.right_enc.read()-offset) < y-50 or time() - time_before > 7:
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -219,7 +218,6 @@ class Robot:
                         0.001 * (t_prev_r_speed - t_right_speed) / (t_mark_now - mark_early))) * 0.00134
 
                 t_prev_r_speed = t_right_speed
-                times_run += 1
         self.left_stop()
         self.right_stop()
         self.left_enc.write()
@@ -240,25 +238,19 @@ class Robot:
         self.cap.release()
         GPIO.cleanup()
 
-sleep(0)
 robot = Robot()
-runtime_loop = False
-for i in range(0,4):
-    robot.turn_PID("right",90)
-    sleep(2)
-    robot.turn_PID("left",90)
-    sleep(2)
-
+runtime_loop = True
+sleep(40)
 # main loop
 while runtime_loop:
     if robot.stage == 0:# and not robot.flag_1:
-        robot.forward_PID(400)
+        robot.forward_PID(400*(robot.stage+1))
     print(robot.alphaL,robot.alphaR)
     print("Loop running, stage",robot.stage)
     width, loc, info, size = robot.get_image()
     if info != "null":
         print("QR detected at",loc, end=", ")
-        if info == "target" and robot.stage != 1:
+        if info == "target" and robot.stage != 1 and width > 150:
             print("target detected")
             robot.stage = 1
         if info == "left" or info == "right":
@@ -272,6 +264,7 @@ while runtime_loop:
                     robot.forward_PID(400)
                 robot.left_stop()
                 robot.right_stop()
+                
 
 
     # center on target
@@ -319,6 +312,7 @@ while runtime_loop:
         sleep(0.5)
         robot.left_stop()
         robot.right_stop()
+        sleep(0.25)
         robot.turn_PID("right", 90)
         robot.stage = 0
         robot.delivery = True
