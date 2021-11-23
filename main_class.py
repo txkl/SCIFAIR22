@@ -1,15 +1,9 @@
 # TIERNAN LINDAUER
-# LAST EDIT 11/11/21
-# LAST BACKED UP VERSION 11/11/21 7:43 PM
+# LAST EDIT 11/21/21
+# LAST BACKED UP VERSION 11/21/21 17:13
 # EXPERIMENTAL SCIFAIR MAIN PROGRAM
 
 # IMPORT MODULES
-
-#UNUSED MODULES
-# import cv2
-# import math
-# import matplotlib.pyplot as plt
-# import numpy as np
 
 from cv2 import VideoCapture
 from cv2 import QRCodeDetector
@@ -18,13 +12,19 @@ from time import time
 from time import sleep
 import Encoder
 from gpiozero import DistanceSensor
-
+GPIO.setwarnings(False) 
+GPIO.setmode(GPIO.BCM)
 
 # ROBOT CLASS
 class Robot:
-    # define objects as global
-    #global left_enc, right_enc, right_pwm, dropper, left_pwm, bottom_sensor, forward_sensor, cap, detector
-
+    #ROBOT MAPPING
+        #23, 24: LEFT ENCODER
+        #20, 21: RIGHT ENCODER
+        #7, 8: FORWARD DISTANCE SENSOR
+        #15, 14: BOTTOM DISTANCE SENSOR
+        #12: RIGHT MOTOR PWM
+        #13: LEFT MOTOR PWM
+        #11: DUMP SERVO PWM
     def __init__(self):
         # OBJECT DEFINITIONS AND SETUP
         self.left_enc = Encoder.Encoder(23, 24)
@@ -49,8 +49,6 @@ class Robot:
 
         # VARIABLES
         self.stage = 0
-        self.delivery = False
-
         self.alphaL = 0.11
         self.alphaR = 0.25
         self.prev_l_speed = 400
@@ -60,6 +58,7 @@ class Robot:
         self.LI = 0
         self.RI = 0
         self.mark_now = 0
+        self.delivery = False
 
     # FUNCTIONS
 
@@ -79,6 +78,7 @@ class Robot:
 
     @staticmethod
     def make_pulse(power):
+        #POWER
         if power > 0:
             abs(power)
             return 990 * power + 1490
@@ -89,12 +89,15 @@ class Robot:
 
     @staticmethod
     def duty_cycle(pulse_width):
+        #PULSE WIDTH
         return (float(pulse_width) / 1000000.0) * 400 * 100
 
     def drive_right_motor(self, pwr):
+        #POWER
         self.right_pwm.ChangeDutyCycle(self.duty_cycle(self.make_pulse(-pwr)))
 
     def drive_left_motor(self, pwr):
+        #POWER
         self.left_pwm.ChangeDutyCycle(self.duty_cycle(self.make_pulse(pwr)))
 
     def left_stop(self):
@@ -107,6 +110,7 @@ class Robot:
         return self.bottom_sensor.distance*100, self.forward_sensor.distance*100
 
     def get_speed(self, x):
+        #L/R ENCODER
         if x == "left":
             self.left_enc.write()
             bt = time()
@@ -127,6 +131,7 @@ class Robot:
             return rs, mn
 
     def forward_PID(self, x):
+        #SPEED IN TPS
         mark_early = time()
 
         self.drive_left_motor(self.alphaL)
@@ -146,6 +151,7 @@ class Robot:
         self.prev_r_speed = self.right_speed
 
     def turn_PID(self, x, y):
+        #DIRECTION, MAGNITUDE(DEGREES)
         mark_early = time()
         time_before = time()
         y = 48*(y/90)
@@ -190,13 +196,11 @@ class Robot:
         self.left_stop()
         self.right_stop()
         return time() - time_before
-
-    @staticmethod
-    def dump():
-        # ADJUST THESE POSITIONS
-        self.dropper.ChangeDutyCycle(5)
-        sleep(3)
-        self.dropper.ChangeDutyCycle(10)
+    
+    def dump(self):
+        self.dropper.ChangeDutyCycle(12)
+        sleep(2)
+        self.dropper.ChangeDutyCycle(4)
 
     def cleanup(self):
         self.left_stop()
@@ -219,7 +223,7 @@ while runtime_loop:
     width, loc, info, size = robot.get_image()
     print(info)
     if info != "null":
-        print("QR detected")
+        print("QR detected", end=" ")
         if info == "target" and robot.stage != 1:
             print("Target detected")
             robot.stage = 1
@@ -265,13 +269,11 @@ while runtime_loop:
             _, forward = robot.check()
         if not robot.delivery:
             robot.stage = 4
-            # COMMENT OUT TO CONTINUE LOOPING
-            runtime_loop = False
+            runtime_loop = False # COMMENT OUT TO CONTINUE LOOPING
         else:
             robot.stage = 5
 
-    # REMOVE "and False" WHEN FIRST HALF OF PROGRAM WORKS
-    if robot.stage == 4 and False:
+    if robot.stage == 4 and False: # REMOVE "and False" WHEN FIRST HALF OF PROGRAM WORKS
         sleep(20)
         robot.drive_left_motor(-0.23)
         robot.drive_right_motor(-0.15)
@@ -284,7 +286,6 @@ while runtime_loop:
 
     if robot.stage == 5:
         # DUMP CARGO
-        # ADJUST DUMP SETTINGS!!!
         robot.dump()
         runtime_loop = False
 
@@ -295,6 +296,6 @@ while runtime_loop:
         robot.right_stop()
         runtime_loop = False
         print(down," ",forward)
-        print("EXITED DUE TO ERROR: OBJECT DETECTED")
+        print("EXITED DUE TO OBJECT/CLIFF DETECTED")
 
 robot.cleanup()
