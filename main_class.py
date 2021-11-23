@@ -1,10 +1,10 @@
 # TIERNAN LINDAUER
-# LAST EDIT 11/21/21
-# LAST BACKED UP VERSION 11/21/21 17:13
-# EXPERIMENTAL SCIFAIR MAIN PROGRAM
+# LAST EDIT 11/23/21
+# LAST BACKED UP VERSION 11/23/21 11:48/24HR
+# OFFICIAL SCIFAIR MAIN PROGRAM
+
 
 # IMPORT MODULES
-
 from cv2 import VideoCapture
 from cv2 import QRCodeDetector
 import RPi.GPIO as GPIO
@@ -12,8 +12,7 @@ from time import time
 from time import sleep
 import Encoder
 from gpiozero import DistanceSensor
-GPIO.setwarnings(False) 
-GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
 
 # ROBOT CLASS
 class Robot:
@@ -181,7 +180,6 @@ class Robot:
 
             t_prev_r_speed = 400
             t_RI = 0
-
             while abs(times_run <= y or time() - time_before > 7):
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
@@ -213,7 +211,6 @@ class Robot:
 
 
 robot = Robot()
-
 runtime_loop = True
 
 # main loop
@@ -221,13 +218,13 @@ while runtime_loop:
     #robot.forward_PID(400)
     print("Loop running, stage",robot.stage)
     width, loc, info, size = robot.get_image()
-    print(info)
     if info != "null":
-        print("QR detected", end=" ")
+        print("QR detected at",loc, end=", ")
         if info == "target" and robot.stage != 1:
-            print("Target detected")
+            print("target detected")
             robot.stage = 1
         if info == "left" or info == "right":
+            print("turning ",info)
             if width > 100:
                 robot.turn_PID(info, 90)
                 sleep(1)
@@ -240,14 +237,14 @@ while runtime_loop:
 
     # center on target
     if robot.stage == 1 and width != -1:
-        if loc < (width / 2) - (width / 20):
+        if loc < (size / 2) - (size / 20):
             robot.drive_right_motor(0.15)
+            robot.drive_left_motor(-0.15)
+            sleep(0.05)
+        elif loc > (size / 2) + (size / 20):
             robot.drive_right_motor(-0.15)
-            sleep(0.03)
-        elif loc > (width / 2) + (width / 20):
-            robot.drive_right_motor(-0.15)
-            robot.drive_right_motor(0.15)
-            sleep(0.03)
+            robot.drive_left_motor(0.15)
+            sleep(0.05)
         else:
             robot.stage = 2
         robot.left_stop()
@@ -264,16 +261,19 @@ while runtime_loop:
 
     if robot.stage == 3:
         _, forward = robot.check()
-        while forward > 50:
-            robot.forward_PID(50)
+        while forward > 15:
+            robot.forward_PID(100)
             _, forward = robot.check()
+            print(forward)
+        robot.left_stop()
+        robot.right_stop()
         if not robot.delivery:
             robot.stage = 4
-            runtime_loop = False # COMMENT OUT TO CONTINUE LOOPING
+            #runtime_loop = False # COMMENT OUT TO CONTINUE LOOPING
         else:
             robot.stage = 5
 
-    if robot.stage == 4 and False: # REMOVE "and False" WHEN FIRST HALF OF PROGRAM WORKS
+    if robot.stage == 4: #and False: # REMOVE "and False" WHEN FIRST HALF OF PROGRAM WORKS
         sleep(20)
         robot.drive_left_motor(-0.23)
         robot.drive_right_motor(-0.15)
