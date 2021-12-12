@@ -24,7 +24,7 @@ class Robot:
         #12: RIGHT MOTOR PWM
         #13: LEFT MOTOR PWM
         #11: DUMP SERVO PWM
-    def __init__(self, src):
+    def __init__(self, stage, src):
         # OBJECT DEFINITIONS AND SETUP
         self.left_enc = Encoder.Encoder(23, 24)
         self.right_enc = Encoder.Encoder(20, 21)
@@ -47,8 +47,8 @@ class Robot:
         self.dropper.start(0)
 
         # VARIABLES
-        self.stage = 0
-        self.alphaL = 0.11
+        self.stage = stage
+        self.alphaL = 0.25
         self.alphaR = 0.25
         self.prev_l_speed = 400
         self.prev_r_speed = 400
@@ -57,16 +57,19 @@ class Robot:
         self.LI = 0
         self.RI = 0
         self.mark_now = 0
-        self.delivery = False
-        self.flag_1 = False
+        self.action_time = 0
         self.cl = 0
-        
+        self.delivery = False
+
+        self.get_image()
     # FUNCTIONS
 
     def get_image(self):
         _, img = self.cap.read()
-        data, bbox, _ = self.detector.detectAndDecode(img)
-
+        try:
+            data, bbox, _ = self.detector.detectAndDecode(img)
+        except(Exception):
+            return -1, -1, -1, -1
         if (bbox is not None):
             box_width = abs(int(bbox[0][1][0]) - int(bbox[0][0][0]))
             x_loc = (int(bbox[0][0][0]) + int(bbox[0][1][0])) / 2
@@ -110,8 +113,11 @@ class Robot:
         self.left_stop()
         self.right_stop()
     def check(self):
-        return self.bottom_sensor.distance*100, self.forward_sensor.distance*100
-
+        try:
+            return self.bottom_sensor.distance*100, self.forward_sensor.distance*100
+        except(Exception):
+            return -1, -1
+        
     def get_speed(self, MOTOR):
         #L/R ENCODER
         if MOTOR == "left":
@@ -133,19 +139,23 @@ class Robot:
             print("RS: ",rs)
             return rs, mn
 
-    def forward_PID(self, SPEED):
+    def forward_PID(self, SPEED, reset):
         #SPEED IN TPS
         x = SPEED
         mark_early = time()
+
+        if reset:
+            self.prev_l_speed = 400
+            self.prev_r_speed = 400
 
         self.drive_left_motor(self.alphaL)
         self.drive_right_motor(self.alphaR)
 
         self.left_speed, self.mark_now = self.get_speed("left")
-        self.LI += 0.001 * ((x / 400) * 400 - self.left_speed)
+        self.LI += 0.0005 * ((x / 400) * 400 - self.left_speed)
         self.alphaL += (0.05 * ((x / 400) * 400 - self.left_speed) + self.LI + (
                 0.001 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
-        self.alphaL+=0.004
+        self.alphaL += 0.003
         
         self.right_speed, self.mark_now = self.get_speed("right")
         self.RI += 0.001 * ((x / 400) * 430 - self.right_speed)
@@ -243,20 +253,20 @@ class Robot:
         GPIO.cleanup()
         del self
 
-robot = Robot(0)
+robot = Robot(0,0) #stage and camera source
 runtime_loop = True
-
-sleep(0)
+sleep(30)
 
 # main runtime loop
 while runtime_loop:
     if robot.stage == 0:
-        robot.forward_PID(400) 
+        robot.forward_PID(400, False) 
     print("Loop running, stage",robot.stage)
     width, loc, info, bbox = robot.get_image()
     if info != "null":
+        print(loc)
         # rotate to QR if applicable
-        if robot.stage < 2:
+        if robot.stage < 2 and False:
             if loc < 300:
                 robot.alphaR += 0.00025
             elif loc > 390:
@@ -264,38 +274,39 @@ while runtime_loop:
                 
         print("QR detected at",loc, end=", ")
         # target mode
-        if info == "target" and robot.stage != 1 and width > 200:
+        if info == "target" and robot.stage == 0 and width > 130 and time()-robot.action_time > 10:
             print("target detected")
             robot.stage = 1
+            robot.action_time = time()
         # turn left or right
         if (info == "left" or info == "right"):
-            if robot.flag_1 == False:
-                robot.flag_1 = True
                 print("turning ",info)
-                if width > 125:
+                if width > 125 and time() - robot.action_time > 7:
                     robot.stop()
-                    sleep(1)
+                    sleep(0.5)
                     robot.turn_PID(info, 90)
-                    sleep(1)
+                    sleep(0.5)
                     # even out the caster wheel
-                    start_time = time()
-                    while time()-start_time < 1:
-                        robot.forward_PID(400)
                     robot.stop()
-            else:
-                robot.flag_1 = False
+                    start_time = time()
+                    while time()-start_time < 2:
+                        robot.forward_PID(400, True)
+                    robot.stop()
+                    sleep(0.5)
+                    robot.action_time = time()
+                    
 
 
     # center on target
     if robot.stage == 1 and width != -1:
-        if loc < 290:
-            robot.drive_right_motor(0.23)
-            robot.drive_left_motor(-0.23)
-            sleep(0.1)
-        elif loc > 400:
-            robot.drive_right_motor(-0.15)
-            robot.drive_left_motor(0.15)
-            sleep(0.1)
+        if loc < 330:
+            robot.drive_right_motor(0.15)
+            robot.drive_left_motor(-0.15)
+            sleep(0.05)
+        elif loc > 360:
+            robot.drive_right_motor(-0.098)
+            robot.drive_left_motor(0.098)
+            sleep(0.05)
         else:
             robot.stage = 2
         robot.stop()
@@ -305,12 +316,12 @@ while runtime_loop:
         if width < 200:
             # reorient
             if loc < 300:
-                robot.drive_right_motor(0.15)
-                robot.drive_left_motor(-0.15)
+                robot.drive_right_motor(0.1)
+                robot.drive_left_motor(-0.1)
                 sleep(0.1)
             elif loc > 390:
-                robot.drive_right_motor(-0.15)
-                robot.drive_left_motor(0.15)
+                robot.drive_right_motor(-0.1)
+                robot.drive_left_motor(0.1)
                 sleep(0.1)
             robot.stop()
 
@@ -325,7 +336,7 @@ while runtime_loop:
     if robot.stage == 3:
         print("Loop running, stage 3")
         _, forward = robot.check()
-        while forward > 15:
+        while forward > 10:
             robot.forward_PID(100)
             _, forward = robot.check()
         robot.stop()
@@ -349,17 +360,26 @@ while runtime_loop:
         #align to be straight to the QR for accurate turning
         print("stage 5")
         if width != -1:
-            prop = (bbox[0][2][0]-bbox[0][0][0])/(bbox[0][3][1]-bbox[0][0][1])
-            print(prop)
-            if prop > 1:
-                prop = 1-(prop-1)
-            if prop < 0.88:
-                robot.drive_left_motor(0.02)
-                robot.drive_right_motor(-0.02)
-                sleep(0.2)
-                robot.stop()
+            if loc < 310:
+                robot.drive_right_motor(0.15)
+                robot.drive_left_motor(-0.15)
+                sleep(0.05)
+            elif loc > 380:
+                robot.drive_right_motor(-0.098)
+                robot.drive_left_motor(0.098)
+                sleep(0.05)
             else:
                 robot.stage = 6
+            
+##            prop = (bbox[0][2][0]-bbox[0][0][0])/(bbox[0][3][1]-bbox[0][0][1])
+##            print(prop)
+##            if prop > 1:
+##                prop = 1-(prop-1)
+##            if prop < 0.88:
+##                robot.drive_left_motor(0.02)
+##                robot.drive_right_motor(-0.02)
+##                sleep(0.2)
+##                robot.stop()
         else:
             robot.drive_left_motor(0.1)
             robot.drive_right_motor(-0.1)
@@ -384,6 +404,8 @@ while runtime_loop:
 
     # CHECK TO NOT GO OVER CLIFF/RUN INTO THINGS
     down, forward = robot.check()
+    if forward == -1:
+        print("NO SENSOR DETECTED!")
     if down > 11 or forward < 10 and robot.stage == 0:
         robot.stop()
         runtime_loop = False
