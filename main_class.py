@@ -167,13 +167,14 @@ class Robot:
 
     def turn_PID(self, DIRECTION, MAGNITUDE):
         #DIRECTION, MAGNITUDE(DEGREES)
-        sleep(0.5)
+        sleep(3)
         
         x = DIRECTION
         y = MAGNITUDE
         
         mark_early = time()
         time_before = time()
+        
         y = 560*(y/90)
         
         if x == "left":
@@ -202,8 +203,8 @@ class Robot:
                 t_LI += 0.001 * (400 - t_left_speed)
                 t_alpha_l -= (0.05 * (400 - t_left_speed) + t_LI + (
                         0.001 * (t_prev_l_speed - t_left_speed) / (t_mark_now - mark_early))) * 0.00134
-
                 t_prev_l_speed = t_left_speed
+
 
         elif x == "right":
             y-=40
@@ -237,7 +238,12 @@ class Robot:
 
                 t_prev_r_speed = t_right_speed
         self.stop()
-
+        
+        #needed otherwise PID will be messed up
+        self.left_enc.write()
+        self.right_enc.write()        
+        sleep(2)
+        
         #necessary to not mess up turning PID
         self.left_enc.write()
         self.right_enc.write()
@@ -257,14 +263,17 @@ class Robot:
         GPIO.cleanup()
         del self
 
-robot = Robot(5,0) #stage and camera source
+robot = Robot(1,0) #stage and camera source
 runtime_loop = True
 sleep(0)
 # main runtime loop
 robot.action_time = time()
 while runtime_loop:
-    if time()-robot.action_time > 15:
+    if time()-robot.action_time > 6 and robot.stage == 1:
         robot.stage = 0
+        robot.action_time = time()
+    if time()-robot.action_time > 10 and robot.stage == 5:
+        robot.stage = 6
         robot.action_time = time()
         
     if robot.stage == 0:
@@ -278,7 +287,7 @@ while runtime_loop:
                 
         print("QR detected at",loc, end=", ")
         # target mode
-        if info == "target" and robot.stage == 0 and width > 130 and time()-robot.action_time > 10:
+        if info == "target" and robot.stage == 0 and width > 130 and time()-robot.action_time > 20:
             print("target detected")
             robot.stage = 1
             robot.action_time = time()
@@ -287,9 +296,7 @@ while runtime_loop:
                 print("turning ",info)
                 if width > 125 and time() - robot.action_time > 7:
                     robot.stop()
-                    sleep(1)
                     robot.turn_PID(info, 90)
-                    sleep(2)
                     start_time = time()
                     while time()-start_time < 2:
                         robot.forward_PID(400, True)
@@ -301,6 +308,7 @@ while runtime_loop:
 
     # center on target
     if robot.stage == 1 and width != -1:
+        robot.action_time = time()
         if loc < 330:
             robot.drive_right_motor(0.15)
             robot.drive_left_motor(-0.15)
@@ -358,6 +366,7 @@ while runtime_loop:
         sleep(0.3)
         robot.left_stop()
         robot.stage = 5
+        
     if robot.stage == 5:
         #align to be straight to the QR for accurate turning
         print("stage 5")
@@ -370,37 +379,25 @@ while runtime_loop:
                     add = (345-(bbox[0][1][0]+bbox[0][0][0])/2)*0.1
                     height_difference += add
             print("height difference: ",height_difference)
+            robot.action_time = time()
             if height_difference > 10:
                 #turn right
                 robot.drive_right_motor(-0.098)
                 robot.drive_left_motor(0.098)
                 sleep(0.1)
                 robot.stop()
-            elif height_difference < -10:
+            elif height_difference < -20:
                 #turn left
                 robot.drive_right_motor(0.15)
                 robot.drive_left_motor(-0.15)
                 sleep(0.1)
                 robot.stop()
-            else:
-                robot.stage = 6
-            
-##            prop = (bbox[0][2][0]-bbox[0][0][0])/(bbox[0][3][1]-bbox[0][0][1])
-##            print(prop)
-##            if prop > 1:
-##                prop = 1-(prop-1)
-##            if prop < 0.88:
-##                robot.drive_left_motor(0.02)
-##                robot.drive_right_motor(-0.02)
-##                sleep(0.2)
-##                robot.stop()
-  
+            elif height_difference != 0:
+                robot.stage = 6  
             
     if robot.stage == 6:
         # turn right and start delivery segment
-        sleep(2)
         robot.turn_PID("right",90)
-        sleep(2)
         robot.stage = 0
         robot.delivery = True
         
@@ -429,6 +426,6 @@ robot.cleanup()
 
 # Thank you to all those who came
 # before me and made this project
-# possible. Mankind is truly incredibile.
+# possible.
 #
 #     -Tiernan Lindauer
