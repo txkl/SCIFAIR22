@@ -1,6 +1,6 @@
 # TIERNAN LINDAUER
-# LAST EDIT 12/11/21
-# LAST BACKED UP VERSION 12/11/21 10:41
+# LAST EDIT 12/19/21
+# LAST BACKED UP VERSION 12/19/21 0707
 # OFFICIAL SCIFAIR MAIN PROGRAM
 
 
@@ -58,7 +58,7 @@ class Robot:
         self.RI = 0
         self.mark_now = 0
         self.action_time = 0
-        self.cl = 0
+        self.cl = time()
         self.delivery = False
 
         self.get_image()
@@ -167,6 +167,8 @@ class Robot:
 
     def turn_PID(self, DIRECTION, MAGNITUDE):
         #DIRECTION, MAGNITUDE(DEGREES)
+        sleep(0.5)
+        
         x = DIRECTION
         y = MAGNITUDE
         
@@ -235,6 +237,8 @@ class Robot:
 
                 t_prev_r_speed = t_right_speed
         self.stop()
+
+        #necessary to not mess up turning PID
         self.left_enc.write()
         self.right_enc.write()
         return time() - time_before
@@ -253,24 +257,24 @@ class Robot:
         GPIO.cleanup()
         del self
 
-robot = Robot(0,0) #stage and camera source
+robot = Robot(5,0) #stage and camera source
 runtime_loop = True
-sleep(30)
-
+sleep(0)
 # main runtime loop
+robot.action_time = time()
 while runtime_loop:
+    if time()-robot.action_time > 15:
+        robot.stage = 0
+        robot.action_time = time()
+        
     if robot.stage == 0:
-        robot.forward_PID(400, False) 
+        robot.forward_PID(400, False)
+        
+        
     print("Loop running, stage",robot.stage)
     width, loc, info, bbox = robot.get_image()
     if info != "null":
         print(loc)
-        # rotate to QR if applicable
-        if robot.stage < 2 and False:
-            if loc < 300:
-                robot.alphaR += 0.00025
-            elif loc > 390:
-                robot.alphaL += 0.00025
                 
         print("QR detected at",loc, end=", ")
         # target mode
@@ -283,16 +287,14 @@ while runtime_loop:
                 print("turning ",info)
                 if width > 125 and time() - robot.action_time > 7:
                     robot.stop()
-                    sleep(0.5)
+                    sleep(1)
                     robot.turn_PID(info, 90)
-                    sleep(0.5)
-                    # even out the caster wheel
-                    robot.stop()
+                    sleep(2)
                     start_time = time()
                     while time()-start_time < 2:
                         robot.forward_PID(400, True)
                     robot.stop()
-                    sleep(0.5)
+                    sleep(1)
                     robot.action_time = time()
                     
 
@@ -337,7 +339,7 @@ while runtime_loop:
         print("Loop running, stage 3")
         _, forward = robot.check()
         while forward > 10:
-            robot.forward_PID(100)
+            robot.forward_PID(100, False)
             _, forward = robot.check()
         robot.stop()
         if not robot.delivery:
@@ -349,7 +351,7 @@ while runtime_loop:
     if robot.stage == 4: #and False: # REMOVE "and False" WHEN FIRST HALF OF PROGRAM WORKS
         print("Loop running")
         sleep(5)# wait to be loaded
-        robot.drive_left_motor(-0.23)#add vision after reversed to straighten out
+        robot.drive_left_motor(-0.3)#add vision after reversed to straighten out
         robot.drive_right_motor(-0.15)
         sleep(0.75)
         robot.right_stop()
@@ -360,14 +362,26 @@ while runtime_loop:
         #align to be straight to the QR for accurate turning
         print("stage 5")
         if width != -1:
-            if loc < 310:
-                robot.drive_right_motor(0.15)
-                robot.drive_left_motor(-0.15)
-                sleep(0.05)
-            elif loc > 380:
+            height_difference = (bbox[0][0][1]-bbox[0][1][1])
+            if(height_difference < 0):
+                    add = ((bbox[0][1][0]+bbox[0][0][0])/2-345)*0.1
+                    height_difference += add
+            elif(height_difference < 0):
+                    add = (345-(bbox[0][1][0]+bbox[0][0][0])/2)*0.1
+                    height_difference += add
+            print("height difference: ",height_difference)
+            if height_difference > 10:
+                #turn right
                 robot.drive_right_motor(-0.098)
                 robot.drive_left_motor(0.098)
-                sleep(0.05)
+                sleep(0.1)
+                robot.stop()
+            elif height_difference < -10:
+                #turn left
+                robot.drive_right_motor(0.15)
+                robot.drive_left_motor(-0.15)
+                sleep(0.1)
+                robot.stop()
             else:
                 robot.stage = 6
             
@@ -380,19 +394,13 @@ while runtime_loop:
 ##                robot.drive_right_motor(-0.02)
 ##                sleep(0.2)
 ##                robot.stop()
-        else:
-            robot.drive_left_motor(0.1)
-            robot.drive_right_motor(-0.1)
-            sleep(0.2)
-            robot.stop()
-            robot.cl += 1;
-        if robot.cl > 5:
-            # doesn't detect QR --> just move on
-            robot.stage = 6
+  
             
     if robot.stage == 6:
         # turn right and start delivery segment
+        sleep(2)
         robot.turn_PID("right",90)
+        sleep(2)
         robot.stage = 0
         robot.delivery = True
         
