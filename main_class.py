@@ -1,6 +1,6 @@
 # TIERNAN LINDAUER
 # LAST EDIT 12/19/21
-# LAST BACKED UP VERSION 12/19/21 0707
+# LAST BACKED UP VERSION 12/19/21 0804
 # OFFICIAL SCIFAIR MAIN PROGRAM
 
 
@@ -269,15 +269,24 @@ sleep(0)
 # main runtime loop
 robot.action_time = time()
 while runtime_loop:
+    
+    #TIME-OUTS
     if time()-robot.action_time > 6 and robot.stage == 1:
         robot.stage = 0
         robot.action_time = time()
     if time()-robot.action_time > 10 and robot.stage == 5:
         robot.stage = 6
         robot.action_time = time()
-        
-    if robot.stage == 0:
-        robot.forward_PID(400, False)
+
+    # CHECK TO NOT GO OVER CLIFF/RUN INTO THINGS
+    down, forward = robot.check()
+    if forward == -1:
+        print("NO SENSOR DETECTED!")
+    if (down > 11 or forward < 10) and robot.stage == 0:
+        robot.stop()
+        runtime_loop = False
+        print("Distances: ",down," ",forward)
+        print("EXITED DUE TO AN OBJECT/CLIFF WHICH WAS DETECTED")    
         
         
     print("Loop running, stage",robot.stage)
@@ -291,6 +300,7 @@ while runtime_loop:
             print("target detected")
             robot.stage = 1
             robot.action_time = time()
+            
         # turn left or right
         if (info == "left" or info == "right"):
                 print("turning ",info)
@@ -303,70 +313,26 @@ while runtime_loop:
                     robot.stop()
                     sleep(1)
                     robot.action_time = time()
-                    
+    
 
+    #ROBOT ALGORITHM BELOW
+    #-------------------------
+    #NOTE: STAGES START AT 0
+    #HOWEVER TO AVOID CONFLICT
+    #THEY ARE ANALYZED IN
+    #DESCENDING ORDER
 
-    # center on target
-    if robot.stage == 1 and width != -1:
-        robot.action_time = time()
-        if loc < 330:
-            robot.drive_right_motor(0.15)
-            robot.drive_left_motor(-0.15)
-            sleep(0.05)
-        elif loc > 360:
-            robot.drive_right_motor(-0.098)
-            robot.drive_left_motor(0.098)
-            sleep(0.05)
-        else:
-            robot.stage = 2
-        robot.stop()
+    if robot.stage == 7:
+        # dump cargo and end program
+        robot.dump()
+        runtime_loop = False
 
-    # controlled bursts forwards to target while adjusting angle
-    if robot.stage == 2 and width != -1:
-        if width < 200:
-            # reorient
-            if loc < 300:
-                robot.drive_right_motor(0.1)
-                robot.drive_left_motor(-0.1)
-                sleep(0.1)
-            elif loc > 390:
-                robot.drive_right_motor(-0.1)
-                robot.drive_left_motor(0.1)
-                sleep(0.1)
-            robot.stop()
+    if robot.stage == 6:
+        # turn right and start delivery segment
+        robot.turn_PID("right",90)
+        robot.stage = 0
+        robot.delivery = True
 
-            # forward, unable to do PID
-            robot.drive_right_motor(0.23)
-            robot.drive_left_motor(0.15)            
-            sleep(0.3)
-            robot.stop()             
-        else:
-            robot.stage = 3
-
-    if robot.stage == 3:
-        print("Loop running, stage 3")
-        _, forward = robot.check()
-        while forward > 10:
-            robot.forward_PID(100, False)
-            _, forward = robot.check()
-        robot.stop()
-        if not robot.delivery:
-            robot.stage = 4
-            #runtime_loop = False # COMMENT OUT TO CONTINUE LOOPING
-        else:
-            robot.stage = 7
-
-    if robot.stage == 4: #and False: # REMOVE "and False" WHEN FIRST HALF OF PROGRAM WORKS
-        print("Loop running")
-        sleep(5)# wait to be loaded
-        robot.drive_left_motor(-0.3)#add vision after reversed to straighten out
-        robot.drive_right_motor(-0.15)
-        sleep(0.75)
-        robot.right_stop()
-        sleep(0.3)
-        robot.left_stop()
-        robot.stage = 5
-        
     if robot.stage == 5:
         #align to be straight to the QR for accurate turning
         print("stage 5")
@@ -393,29 +359,74 @@ while runtime_loop:
                 sleep(0.1)
                 robot.stop()
             elif height_difference != 0:
-                robot.stage = 6  
-            
-    if robot.stage == 6:
-        # turn right and start delivery segment
-        robot.turn_PID("right",90)
-        robot.stage = 0
-        robot.delivery = True
-        
-    if robot.stage == 7:
-        # dump cargo and end program
-        robot.dump()
-        runtime_loop = False
+                robot.stage = 6
 
-
-    # CHECK TO NOT GO OVER CLIFF/RUN INTO THINGS
-    down, forward = robot.check()
-    if forward == -1:
-        print("NO SENSOR DETECTED!")
-    if down > 11 or forward < 10 and robot.stage == 0:
+    if robot.stage == 4:
+        #reverse after being loaded
+        print("Loop running")
+        sleep(5)# wait to be loaded
+        robot.drive_left_motor(-0.3)#add vision after reversed to straighten out
+        robot.drive_right_motor(-0.15)
+        sleep(0.75)
+        robot.right_stop()
+        sleep(0.3)
+        robot.left_stop()
+        robot.stage = 5
+                
+    if robot.stage == 3:
+        #use ultrasonic distance sensors in a final approach - might completely skip stage 2
+        print("Loop running, stage 3")
+        _, forward = robot.check()
+        while forward > 10:
+            robot.forward_PID(100, False)
+            _, forward = robot.check()
         robot.stop()
-        runtime_loop = False
-        print("Distances: ",down," ",forward)
-        print("EXITED DUE TO OBJECT/CLIFF DETECTED")
+        if not robot.delivery:
+            robot.stage = 4
+            #runtime_loop = False # COMMENT OUT TO CONTINUE LOOPING
+        else:
+            robot.stage = 7
+            
+    if robot.stage == 2 and width != -1:
+        # controlled bursts forwards to target while adjusting angle
+        if width < 200:
+            # reorient
+            if loc < 300:
+                robot.drive_right_motor(0.1)
+                robot.drive_left_motor(-0.1)
+                sleep(0.1)
+            elif loc > 390:
+                robot.drive_right_motor(-0.1)
+                robot.drive_left_motor(0.1)
+                sleep(0.1)
+            robot.stop()
+
+            # forward, unable to do PID
+            robot.drive_right_motor(0.23)
+            robot.drive_left_motor(0.15)            
+            sleep(0.3)
+            robot.stop()             
+        else:
+            robot.stage = 3
+            
+    # center on target
+    if robot.stage == 1 and width != -1:
+        robot.action_time = time()
+        if loc < 330:
+            robot.drive_right_motor(0.15)
+            robot.drive_left_motor(-0.15)
+            sleep(0.05)
+        elif loc > 360:
+            robot.drive_right_motor(-0.098)
+            robot.drive_left_motor(0.098)
+            sleep(0.05)
+        else:
+            robot.stage = 2
+        robot.stop()
+
+    #default state: move forward
+    if robot.stage == 0:
+        robot.forward_PID(400, False)
 
 # take care of the robot
 robot.cleanup()
