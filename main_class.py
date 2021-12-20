@@ -187,7 +187,7 @@ class Robot:
         self.LI += 0.0005 * ((x / 400) * 400 - self.left_speed)
         self.alphaL += (0.05 * ((x / 400) * 400 - self.left_speed) + self.LI + (
                 0.001 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
-        self.alphaL -= 0.0015
+        self.alphaL -= 0.0005
         
         self.right_speed, self.mark_now = self.get_speed("right")
         self.RI += 0.001 * ((x / 400) * 400 - self.right_speed)
@@ -246,7 +246,8 @@ class Robot:
             t_prev_r_speed = 400
             t_RI = 0
             offset = self.right_enc.read()
-            while abs(self.left_enc.read()-offset) < 50:
+            sleep(0.5)
+            while abs(self.left_enc.read()-offset) < 100:
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
 
@@ -258,7 +259,8 @@ class Robot:
                 t_prev_r_speed = t_right_speed
             self.stop()
             print("sleeping")
-            sleep(1)
+            sleep(1.5)
+            offset -= 50
             while abs(self.right_enc.read()-offset) < y-50 or time() - time_before > 7:
                 self.drive_left_motor(t_alpha_l)
                 self.drive_right_motor(t_alpha_r)
@@ -378,7 +380,7 @@ while runtime_loop:
 
     if robot.stage == 6:
         # turn right and start delivery segment
-        robot.sleep(1)
+        sleep(1)
         robot.turn_PID("right",90)
         robot.stage = 0
         robot.delivery = True
