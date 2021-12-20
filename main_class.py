@@ -1,6 +1,6 @@
 # TIERNAN LINDAUER
-# LAST EDIT 12/19/21
-# LAST BACKED UP VERSION 12/19/21 0804
+# LAST EDIT 12/20/21
+# LAST BACKED UP VERSION 12/19/21 0804  
 # OFFICIAL SCIFAIR MAIN PROGRAM
 
 
@@ -24,7 +24,7 @@ class Robot:
         #12: RIGHT MOTOR PWM
         #13: LEFT MOTOR PWM
         #11: DUMP SERVO PWM
-    def __init__(self, stage, src):
+    def __init__(self, stage):
         # OBJECT DEFINITIONS AND SETUP
         self.left_enc = Encoder.Encoder(23, 24)
         self.right_enc = Encoder.Encoder(20, 21)
@@ -32,7 +32,13 @@ class Robot:
         self.forward_sensor = DistanceSensor(echo=7, trigger=8)
         self.bottom_sensor = DistanceSensor(echo=15, trigger=14)
 
-        self.cap = VideoCapture(src)
+        #auto camera source finder
+        self.src = 0
+        self.cap = VideoCapture(self.src)
+        while not self.cap.isOpened():
+            self.src += 1
+            self.cap = VideoCapture(self.src)
+            
         self.detector = QRCodeDetector()
 
         GPIO.setup(13, GPIO.OUT)
@@ -48,7 +54,7 @@ class Robot:
 
         # VARIABLES
         self.stage = stage
-        self.alphaL = 0.25
+        self.alphaL = 0.12
         self.alphaR = 0.25
         self.prev_l_speed = 400
         self.prev_r_speed = 400
@@ -58,12 +64,12 @@ class Robot:
         self.RI = 0
         self.mark_now = 0
         self.action_time = 0
-        self.cl = time()
+        self.to_turn = "none"
         self.delivery = False
 
         self.get_image()
+        
     # FUNCTIONS
-
     def get_image(self):
         _, img = self.cap.read()
         try:
@@ -138,7 +144,33 @@ class Robot:
             rs = 10 / (mn - bt)
             print("RS: ",rs)
             return rs, mn
-
+    def center(self):
+        self.drive_right_motor(-0.098)
+        self.drive_left_motor(0.098)
+        sleep(1)
+        self.stop()
+        sleep(1)
+        turn_loop = True
+        last_dist = 100
+        while turn_loop:
+            _, dist = self.check()
+            print(dist)
+            while abs(dist-last_dist) > 30 and last_dist != 100.0 and dist != 100:
+                _, dist = self.check()
+            if int(last_dist) >= int(dist):
+                self.drive_right_motor(0.15)
+                self.drive_left_motor(-0.15)
+                sleep(0.1)
+                self.stop()
+            else:
+                if dist < 60:
+                    turn_loop = False
+            last_dist = dist
+        self.drive_right_motor(-0.098)
+        self.drive_left_motor(0.098)
+        sleep(0.1)
+        self.stop()
+        
     def forward_PID(self, SPEED, reset):
         #SPEED IN TPS
         x = SPEED
@@ -155,11 +187,11 @@ class Robot:
         self.LI += 0.0005 * ((x / 400) * 400 - self.left_speed)
         self.alphaL += (0.05 * ((x / 400) * 400 - self.left_speed) + self.LI + (
                 0.001 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
-        self.alphaL += 0.003
+        self.alphaL -= 0.0015
         
         self.right_speed, self.mark_now = self.get_speed("right")
-        self.RI += 0.001 * ((x / 400) * 430 - self.right_speed)
-        self.alphaR += (0.05 * ((x / 400) * 430 - self.right_speed) + self.RI + (
+        self.RI += 0.001 * ((x / 400) * 400 - self.right_speed)
+        self.alphaR += (0.05 * ((x / 400) * 400 - self.right_speed) + self.RI + (
                 0.001 * (self.prev_r_speed - self.right_speed) / (self.mark_now - mark_early))) * 0.00134
         # record speed
         self.prev_l_speed = self.left_speed
@@ -263,19 +295,31 @@ class Robot:
         GPIO.cleanup()
         del self
 
-robot = Robot(1,0) #stage and camera source
+robot = Robot(0) #stage
 runtime_loop = True
-sleep(0)
+
+#wait until starting signal
+_, fwd = robot.check()
+while fwd > 7:
+    sleep(0.01)
+    _, fwd = robot.check()
+sleep(4)
+
 # main runtime loop
 robot.action_time = time()
 while runtime_loop:
+    #see if camera is opened, if not, auto-select
+    if not robot.cap.isOpened():
+        robot.src = 0
+    while (not robot.cap.isOpened()) and runtime_loop:
+            robot.src += 1
+            robot.cap = VideoCapture(robot.src)
+            if robot.src > 10:
+                runtime_loop = False
     
     #TIME-OUTS
     if time()-robot.action_time > 6 and robot.stage == 1:
         robot.stage = 0
-        robot.action_time = time()
-    if time()-robot.action_time > 10 and robot.stage == 5:
-        robot.stage = 6
         robot.action_time = time()
 
     # CHECK TO NOT GO OVER CLIFF/RUN INTO THINGS
@@ -302,7 +346,12 @@ while runtime_loop:
             robot.action_time = time()
             
         # turn left or right
-        if (info == "left" or info == "right"):
+        if (info == "left" or info == "right") and width > 50:#this number might need tweaking
+            #robot.stage = 0.5
+            #robot.to_turn = info
+            
+            #change to use old turning method
+            if True:
                 print("turning ",info)
                 if width > 125 and time() - robot.action_time > 7:
                     robot.stop()
@@ -329,6 +378,7 @@ while runtime_loop:
 
     if robot.stage == 6:
         # turn right and start delivery segment
+        robot.sleep(1)
         robot.turn_PID("right",90)
         robot.stage = 0
         robot.delivery = True
@@ -337,35 +387,14 @@ while runtime_loop:
         #align to be straight to the QR for accurate turning
         print("stage 5")
         if width != -1:
-            height_difference = (bbox[0][0][1]-bbox[0][1][1])
-            if(height_difference < 0):
-                    add = ((bbox[0][1][0]+bbox[0][0][0])/2-345)*0.1
-                    height_difference += add
-            elif(height_difference < 0):
-                    add = (345-(bbox[0][1][0]+bbox[0][0][0])/2)*0.1
-                    height_difference += add
-            print("height difference: ",height_difference)
-            robot.action_time = time()
-            if height_difference > 10:
-                #turn right
-                robot.drive_right_motor(-0.098)
-                robot.drive_left_motor(0.098)
-                sleep(0.1)
-                robot.stop()
-            elif height_difference < -20:
-                #turn left
-                robot.drive_right_motor(0.15)
-                robot.drive_left_motor(-0.15)
-                sleep(0.1)
-                robot.stop()
-            elif height_difference != 0:
-                robot.stage = 6
+            robot.center()
+            robot.stage = 6
 
     if robot.stage == 4:
         #reverse after being loaded
         print("Loop running")
         sleep(5)# wait to be loaded
-        robot.drive_left_motor(-0.3)#add vision after reversed to straighten out
+        robot.drive_left_motor(-0.3)
         robot.drive_right_motor(-0.15)
         sleep(0.75)
         robot.right_stop()
@@ -423,6 +452,18 @@ while runtime_loop:
         else:
             robot.stage = 2
         robot.stop()
+
+    if robot.stage == 0.5:
+        sleep(2)
+        _, forward = robot.check()
+        while(forward > 40):
+            robot.forward_PID(400, False)
+            _, forward = robot.check()
+        robot.stop()
+        robot.center()
+        robot.turn_PID(robot.to_turn, 90)
+        robot.to_turn = "none"
+        robot.stage = 0
 
     #default state: move forward
     if robot.stage == 0:
