@@ -4,7 +4,7 @@
 # OFFICIAL SCIFAIR MAIN PROGRAM
 
 
-# IMPORT MODULES
+# IMPORT FUNCTIONS FROM MODULES
 from cv2 import VideoCapture
 from cv2 import QRCodeDetector
 import RPi.GPIO as GPIO
@@ -12,6 +12,8 @@ from time import time
 from time import sleep
 import Encoder
 from gpiozero import DistanceSensor
+
+#set warnings to not show up
 GPIO.setwarnings(False)
 
 # ROBOT CLASS
@@ -24,6 +26,7 @@ class Robot:
         #12: RIGHT MOTOR PWM
         #13: LEFT MOTOR PWM
         #11: DUMP SERVO PWM
+    
     def __init__(self, stage):
         # OBJECT DEFINITIONS AND SETUP
         self.left_enc = Encoder.Encoder(23, 24)
@@ -54,7 +57,7 @@ class Robot:
 
         # VARIABLES
         self.stage = stage
-        self.alphaL = 0.12
+        self.alphaL = 0.10
         self.alphaR = 0.25
         self.prev_l_speed = 400
         self.prev_r_speed = 400
@@ -64,7 +67,7 @@ class Robot:
         self.RI = 0
         self.mark_now = 0
         self.action_time = 0
-        self.to_turn = "none"
+        self.to_turn = "right"
         self.delivery = False
 
         self.get_image()
@@ -166,8 +169,8 @@ class Robot:
                 if dist < 60:
                     turn_loop = False
             last_dist = dist
-        self.drive_right_motor(-0.098)
-        self.drive_left_motor(0.098)
+        #self.drive_right_motor(-0.098)
+        #self.drive_left_motor(0.098)
         sleep(0.1)
         self.stop()
         
@@ -187,7 +190,7 @@ class Robot:
         self.LI += 0.0005 * ((x / 400) * 400 - self.left_speed)
         self.alphaL += (0.05 * ((x / 400) * 400 - self.left_speed) + self.LI + (
                 0.001 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
-        self.alphaL -= 0.0005
+        self.alphaL -= 0.0009
         
         self.right_speed, self.mark_now = self.get_speed("right")
         self.RI += 0.001 * ((x / 400) * 400 - self.right_speed)
@@ -271,6 +274,8 @@ class Robot:
                         0.001 * (t_prev_r_speed - t_right_speed) / (t_mark_now - mark_early))) * 0.00134
 
                 t_prev_r_speed = t_right_speed
+        else:
+            print("invalid turn id of ",x," requested!")
         self.stop()
         
         #needed otherwise PID will be messed up
@@ -297,7 +302,9 @@ class Robot:
         GPIO.cleanup()
         del self
 
-robot = Robot(0) #stage
+#create robot object
+robot = Robot(0) #preset stage
+#boolean for the loop being on/off
 runtime_loop = True
 
 #wait until starting signal
@@ -305,7 +312,8 @@ _, fwd = robot.check()
 while fwd > 7:
     sleep(0.01)
     _, fwd = robot.check()
-sleep(4)
+print("starting...")
+sleep(3)
 
 # main runtime loop
 robot.action_time = time()
@@ -342,18 +350,19 @@ while runtime_loop:
                 
         print("QR detected at",loc, end=", ")
         # target mode
-        if info == "target" and robot.stage == 0 and width > 130 and time()-robot.action_time > 20:
+        if info == "target" and robot.stage == 0 and width > 50 and time()-robot.action_time > 20:
             print("target detected")
             robot.stage = 1
             robot.action_time = time()
             
         # turn left or right
-        if (info == "left" or info == "right") and width > 50:#this number might need tweaking
-            #robot.stage = 0.5
-            #robot.to_turn = info
+        if (info == "left" or info == "right") and width > 80:#this number might need tweaking
+            if time()-action_time() > 10:
+                robot.stage = 0.5
+                robot.to_turn = info
             
             #change to use old turning method
-            if True:
+            if False:
                 print("turning ",info)
                 if width > 125 and time() - robot.action_time > 7:
                     robot.stop()
@@ -456,14 +465,19 @@ while runtime_loop:
         robot.stop()
 
     if robot.stage == 0.5:
+        #stage for centering and turning, not used in old version of the code
         sleep(2)
         _, forward = robot.check()
-        while(forward > 40):
-            robot.forward_PID(400, False)
+        while(forward > 20):
+            robot.forward_PID(200, False)
             _, forward = robot.check()
         robot.stop()
+        robot.drive_right_motor(-0.15)
+        robot.drive_left_motor(0.098)        
         robot.center()
+        print("centered")
         robot.turn_PID(robot.to_turn, 90)
+        print("turned")
         robot.to_turn = "none"
         robot.stage = 0
 
@@ -478,8 +492,8 @@ robot.cleanup()
 
 
 
-# Thank you to all those who came
-# before me and made this project
-# possible.
+#   Thank you to all those who came
+#   before me and made this project
+#   possible.
 #
-#     -Tiernan Lindauer
+#         -Tiernan Lindauer
