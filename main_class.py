@@ -158,8 +158,8 @@ class Robot:
         while turn_loop:
             _, dist = self.check()
             print(dist)
-            while abs(dist-last_dist) > 30 and last_dist != 100.0 and dist != 100:
-                _, dist = self.check()
+            #while abs(dist-last_dist) > 30 and dist != 100: #why was this even a thing
+            #    _, dist = self.check() #the thought process here... rip
             if int(last_dist) >= int(dist):
                 self.drive_right_motor(0.15)
                 self.drive_left_motor(-0.15)
@@ -190,9 +190,9 @@ class Robot:
         self.LI += 0.000 * ((x / 400) * 400 - self.left_speed)
         self.alphaL += (0.05 * ((x / 400) * 400 - self.left_speed) + self.LI + (
                 0.000 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
-        
+        self.alphaL -= 0.002
         self.right_speed, self.mark_now = self.get_speed("right")
-        self.RI += 0.001 * ((x / 400) * 400 - self.right_speed)
+        self.RI += 0.002 * ((x / 400) * 400 - self.right_speed)
         self.alphaR += (0.05 * ((x / 400) * 400 - self.right_speed) + self.RI + (
                 0.001 * (self.prev_r_speed - self.right_speed) / (self.mark_now - mark_early))) * 0.00134
         # record speed
@@ -347,7 +347,7 @@ while runtime_loop:
         print("Distances: ",down," ",forward)
         print("EXITED DUE TO AN OBJECT/CLIFF WHICH WAS DETECTED")    
         
-        
+    #get frame and analyze
     print("Loop running, stage",robot.stage)
     width, loc, info, bbox = robot.get_image()
     if info != "null":
@@ -361,9 +361,9 @@ while runtime_loop:
             robot.action_time = time()
             
         # turn left or right
-        if (info == "left" or info == "right") and width > 60:#this number might need tweaking
-            if time()-robot.action_time > 5:
-                robot.stage = 0.5
+        if (info == "left" or info == "right") and width > 50:#this number might need tweaking
+            if time()-robot.action_time > 5: # action time might cause some issues depending on
+                robot.stage = 0.5            # distance to the next closest action time
                 robot.to_turn = info
                 robot.action_time = time()
             
@@ -469,14 +469,13 @@ while runtime_loop:
 
     if robot.stage == 0.5:
         #stage for centering and turning, not used in old version of the code
+        robot.stop()
         sleep(2)
         _, forward = robot.check()
-        while(forward > 20):
+        while(forward > 30):
             robot.forward_PID(200, False)
             _, forward = robot.check()
         robot.stop()
-        robot.drive_right_motor(-0.15)
-        robot.drive_left_motor(0.098)        
         robot.center()
         print("centered")
         robot.turn_PID(robot.to_turn, 90)
