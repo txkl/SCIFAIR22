@@ -1,6 +1,6 @@
 # TIERNAN LINDAUER
 # LAST EDIT 12/21/21
-# LAST BACKED UP VERSION 12/21/21 1022  
+# LAST BACKED UP VERSION 12/21/21 1452 
 # OFFICIAL SCIFAIR MAIN PROGRAM
 
 
@@ -57,7 +57,7 @@ class Robot:
 
         # VARIABLES
         self.stage = stage
-        self.alphaL = 0.10
+        self.alphaL = 0.11
         self.alphaR = 0.25
         self.prev_l_speed = 400
         self.prev_r_speed = 400
@@ -67,7 +67,7 @@ class Robot:
         self.RI = 0
         self.mark_now = 0
         self.action_time = 0
-        self.to_turn = "right"
+        self.to_turn = "none"
         self.delivery = False
 
         self.get_image()
@@ -84,7 +84,7 @@ class Robot:
             x_loc = (int(bbox[0][0][0]) + int(bbox[0][1][0])) / 2
 
             if data == "left" or data == "right" or data == "target":
-                print(data)
+                print(box_width)
                 return box_width, x_loc, data, bbox #width is always 1920 pixels
             return box_width, x_loc, "null", bbox
         return -1, -1, "null", -1
@@ -187,10 +187,9 @@ class Robot:
         self.drive_right_motor(self.alphaR)
 
         self.left_speed, self.mark_now = self.get_speed("left")
-        self.LI += 0.0005 * ((x / 400) * 400 - self.left_speed)
+        self.LI += 0.000 * ((x / 400) * 400 - self.left_speed)
         self.alphaL += (0.05 * ((x / 400) * 400 - self.left_speed) + self.LI + (
-                0.001 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
-        self.alphaL -= 0.0009
+                0.000 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
         
         self.right_speed, self.mark_now = self.get_speed("right")
         self.RI += 0.001 * ((x / 400) * 400 - self.right_speed)
@@ -202,6 +201,7 @@ class Robot:
 
     def turn_PID(self, DIRECTION, MAGNITUDE):
         #DIRECTION, MAGNITUDE(DEGREES)
+        robot.stop()
         sleep(3)
         
         x = DIRECTION
@@ -304,10 +304,15 @@ class Robot:
 
 #create robot object
 robot = Robot(0) #preset stage
+
+#reset encoders using custom method
+robot.left_enc.write()
+robot.right_enc.write()
+
 #boolean for the loop being on/off
 runtime_loop = True
 
-#wait until starting signal
+#wait until starting signal- waving in front of the distance sensor
 _, fwd = robot.check()
 while fwd > 7:
     sleep(0.01)
@@ -337,7 +342,7 @@ while runtime_loop:
     if forward == -1:
         print("NO SENSOR DETECTED!")
     if (down > 11 or forward < 10) and robot.stage == 0:
-        robot.stop()
+        robot.cleanup() #this will throw an error later but it's better than falling off a cliff, no?
         runtime_loop = False
         print("Distances: ",down," ",forward)
         print("EXITED DUE TO AN OBJECT/CLIFF WHICH WAS DETECTED")    
@@ -350,14 +355,14 @@ while runtime_loop:
                 
         print("QR detected at",loc, end=", ")
         # target mode
-        if info == "target" and robot.stage == 0 and width > 50 and time()-robot.action_time > 20:
+        if info == "target" and robot.stage == 0 and width > 100 and time()-robot.action_time > 10:
             print("target detected")
             robot.stage = 1
             robot.action_time = time()
             
         # turn left or right
-        if (info == "left" or info == "right") and width > 80:#this number might need tweaking
-            if time()-robot.action_time > 10:
+        if (info == "left" or info == "right") and width > 60:#this number might need tweaking
+            if time()-robot.action_time > 5:
                 robot.stage = 0.5
                 robot.to_turn = info
                 robot.action_time = time()
@@ -397,10 +402,8 @@ while runtime_loop:
 
     if robot.stage == 5:
         #align to be straight to the QR for accurate turning
-        print("stage 5")
-        if width != -1:
-            robot.center()
-            robot.stage = 6
+        robot.center()
+        robot.stage = 6
 
     if robot.stage == 4:
         #reverse after being loaded
@@ -408,7 +411,7 @@ while runtime_loop:
         sleep(5)# wait to be loaded
         robot.drive_left_motor(-0.3)
         robot.drive_right_motor(-0.15)
-        sleep(0.75)
+        sleep(0.25)
         robot.right_stop()
         sleep(0.3)
         robot.left_stop()
@@ -442,10 +445,9 @@ while runtime_loop:
                 sleep(0.1)
             robot.stop()
 
-            # forward, unable to do PID
-            robot.drive_right_motor(0.23)
-            robot.drive_left_motor(0.15)            
-            sleep(0.3)
+            tbf = time()    
+            while time() - tbf < 0.3:
+                robot.forward_PID(200, False)
             robot.stop()             
         else:
             robot.stage = 3
@@ -485,7 +487,10 @@ while runtime_loop:
 
     #default state: move forward
     if robot.stage == 0:
-        robot.forward_PID(400, False)
+        if time() - robot.action_time > 3:
+            robot.forward_PID(400, True)
+        else:
+            robot.forward_PID(400, False)
 
 # take care of the robot
 robot.cleanup()
