@@ -357,9 +357,10 @@ while runtime_loop:
             
         # turn left or right
         if (info == "left" or info == "right") and width > 80:#this number might need tweaking
-            if time()-action_time() > 10:
+            if time()-robot.action_time > 10:
                 robot.stage = 0.5
                 robot.to_turn = info
+                robot.action_time = time()
             
             #change to use old turning method
             if False:
@@ -480,6 +481,7 @@ while runtime_loop:
         print("turned")
         robot.to_turn = "none"
         robot.stage = 0
+        robot.action_time = time()
 
     #default state: move forward
     if robot.stage == 0:
