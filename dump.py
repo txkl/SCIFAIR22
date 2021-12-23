@@ -1,18 +1,13 @@
 import RPi.GPIO as GPIO
 from time import sleep
+GPIO.setwarnings(False)
+servoPIN = 11
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(servoPIN, GPIO.OUT)
+p = GPIO.PWM(servoPIN, 50) # GPIO 17 for PWM with 50Hz
+p.start(1) # Initialization
 
-GPIO.setmode(GPIO.BOARD)
-GPIO.setup(11, GPIO.OUT)
-
-pwm=GPIO.PWM(11, 50)
-pwm.start(0)
-
-pwm.ChangeDutyCycle(5) # left -90 deg position
 sleep(1)
-pwm.ChangeDutyCycle(7.5) # neutral position
+p.ChangeDutyCycle(12)
 sleep(1)
-pwm.ChangeDutyCycle(10) # right +90 deg position
-sleep(1)
-
-pwm.stop()
-GPIO.cleanup()
+p.ChangeDutyCycle(4)

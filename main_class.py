@@ -376,7 +376,7 @@ while runtime_loop:
                 
         print("QR detected at",loc, end=", ")
         # target mode
-        if info == "target" and robot.stage == 0 and width > 100 and time()-robot.action_time > 10:
+        if info == "target" and robot.stage == 0 and width > 100:# and time()-robot.action_time > 10: #last qualification is important when NOT used in testing
             print("target detected")
             robot.stage = 1
             robot.action_time = time()
