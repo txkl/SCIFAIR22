@@ -1,6 +1,6 @@
 # TIERNAN LINDAUER
-# LAST EDIT 12/21/21
-# LAST BACKED UP VERSION 12/21/21 1452 
+# LAST EDIT 12/23/21
+# LAST BACKED UP VERSION 12/23/21 1046 
 # OFFICIAL SCIFAIR MAIN PROGRAM
 
 
@@ -15,6 +15,10 @@ from gpiozero import DistanceSensor
 
 #set warnings to not show up
 GPIO.setwarnings(False)
+
+#code to record video - typically leave commented out
+from cv2 import VideoWriter
+from cv2 import VideoWriter_fourcc
 
 # ROBOT CLASS
 class Robot:
@@ -44,6 +48,17 @@ class Robot:
             
         self.detector = QRCodeDetector()
 
+        #code to record video - typically leave commented out
+        frame_width = int(self.cap.get(3))
+        frame_height = int(self.cap.get(4))
+
+        size = (frame_width, frame_height)
+
+        self.result = VideoWriter('RobotPerspective1.avi', 
+                                 VideoWriter_fourcc(*'MJPG'),
+                                 10, size)
+        #video recording code ends here
+
         GPIO.setup(13, GPIO.OUT)
         GPIO.setup(12, GPIO.OUT)
         GPIO.setup(11, GPIO.OUT)
@@ -57,7 +72,7 @@ class Robot:
 
         # VARIABLES
         self.stage = stage
-        self.alphaL = 0.11
+        self.alphaL = 0.12
         self.alphaR = 0.25
         self.prev_l_speed = 400
         self.prev_r_speed = 400
@@ -75,6 +90,8 @@ class Robot:
     # FUNCTIONS
     def get_image(self):
         _, img = self.cap.read()
+        #comment the line below out if not recording robot FOV
+        self.result.write(img)
         try:
             data, bbox, _ = self.detector.detectAndDecode(img)
         except(Exception):
@@ -169,8 +186,10 @@ class Robot:
                 if dist < 60:
                     turn_loop = False
             last_dist = dist
-        #self.drive_right_motor(-0.098)
-        #self.drive_left_motor(0.098)
+        self.stop()
+        sleep(0.25)
+        self.drive_right_motor(-0.098)
+        self.drive_left_motor(0.098)
         sleep(0.1)
         self.stop()
         
@@ -187,12 +206,12 @@ class Robot:
         self.drive_right_motor(self.alphaR)
 
         self.left_speed, self.mark_now = self.get_speed("left")
-        self.LI += 0.000 * ((x / 400) * 400 - self.left_speed)
+        self.LI += 0.001 * ((x / 400) * 400 - self.left_speed)
         self.alphaL += (0.05 * ((x / 400) * 400 - self.left_speed) + self.LI + (
-                0.000 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
-        self.alphaL -= 0.002
+                0.001 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
+        #self.alphaL -= 0.002
         self.right_speed, self.mark_now = self.get_speed("right")
-        self.RI += 0.002 * ((x / 400) * 400 - self.right_speed)
+        self.RI += 0.001 * ((x / 400) * 400 - self.right_speed)
         self.alphaR += (0.05 * ((x / 400) * 400 - self.right_speed) + self.RI + (
                 0.001 * (self.prev_r_speed - self.right_speed) / (self.mark_now - mark_early))) * 0.00134
         # record speed
@@ -311,18 +330,20 @@ robot.right_enc.write()
 
 #boolean for the loop being on/off
 runtime_loop = True
-
+robot.delivery = True #get rid of this eventually
 #wait until starting signal- waving in front of the distance sensor
 _, fwd = robot.check()
 while fwd > 7:
     sleep(0.01)
     _, fwd = robot.check()
 print("starting...")
-sleep(3)
+sleep(4)
 
 # main runtime loop
 robot.action_time = time()
 while runtime_loop:
+    robot.left_enc.write()
+    robot.right_enc.write()
     #see if camera is opened, if not, auto-select
     if not robot.cap.isOpened():
         robot.src = 0
@@ -361,7 +382,7 @@ while runtime_loop:
             robot.action_time = time()
             
         # turn left or right
-        if (info == "left" or info == "right") and width > 50:#this number might need tweaking
+        if (info == "left" or info == "right") and width > 100:#this number might need tweaking
             if time()-robot.action_time > 5: # action time might cause some issues depending on
                 robot.stage = 0.5            # distance to the next closest action time
                 robot.to_turn = info
@@ -408,7 +429,7 @@ while runtime_loop:
     if robot.stage == 4:
         #reverse after being loaded
         print("Loop running")
-        sleep(5)# wait to be loaded
+        sleep(15)# wait to be loaded
         robot.drive_left_motor(-0.3)
         robot.drive_right_motor(-0.15)
         sleep(0.25)
