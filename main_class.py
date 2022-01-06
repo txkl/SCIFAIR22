@@ -1,6 +1,6 @@
 # TIERNAN LINDAUER
-# LAST EDIT 12/23/21
-# LAST BACKED UP VERSION 12/23/21 1046 
+# LAST EDIT 1/6/22
+# LAST BACKED UP VERSION 1/6/22 14:39
 # OFFICIAL SCIFAIR MAIN PROGRAM
 
 
@@ -11,7 +11,9 @@ import RPi.GPIO as GPIO
 from time import time
 from time import sleep
 import Encoder
+import math
 from gpiozero import DistanceSensor
+from scipy.misc import derivative
 
 #set warnings to not show up
 GPIO.setwarnings(False)
@@ -76,10 +78,13 @@ class Robot:
         self.alphaR = 0.25
         self.prev_l_speed = 400
         self.prev_r_speed = 400
+        self.prev_time = 0
         self.left_speed = 400
         self.right_speed = 400
         self.LI = 0
         self.RI = 0
+        self.a = 0
+        self.b = 0
         self.mark_now = 0
         self.action_time = 0
         self.to_turn = "none"
@@ -117,6 +122,14 @@ class Robot:
         else:
             return 1500
 
+    @staticmethod
+    def f(x):
+        return self.a*self.b**x
+    @staticmethod
+    def deriv(x1, x2, y1, y2):
+        self.b = (y2/y1)**(1/(x2-x1))
+        self.a = y1/(self.b**x1)
+        return derivative(f, 1.0, dx=x2)
     @staticmethod
     def duty_cycle(pulse_width):
         #PULSE WIDTH
@@ -202,19 +215,34 @@ class Robot:
             self.prev_l_speed = 400
             self.prev_r_speed = 400
 
+        #add the current alpha values
         self.drive_left_motor(self.alphaL)
         self.drive_right_motor(self.alphaR)
 
         self.left_speed, self.mark_now = self.get_speed("left")
+        #Integral/Summation term
         self.LI += 0.001 * ((x / 400) * 400 - self.left_speed)
+        #Proportional term
         self.alphaL += (0.05 * ((x / 400) * 400 - self.left_speed) + self.LI + (
                 0.001 * (self.prev_l_speed - self.left_speed) / (self.mark_now - mark_early))) * 0.00134
-        #self.alphaL -= 0.002
+        #calculate the derivative
+        left_deriv = deriv(self.prev_time, mark_early, self.prev_l_speed, self.left_speed)
+        #Derivative term
+        self.alphaL += (left_deriv)*0.001
+        
         self.right_speed, self.mark_now = self.get_speed("right")
+        #Integral/Summation term
         self.RI += 0.001 * ((x / 400) * 400 - self.right_speed)
+        #Proportional term
         self.alphaR += (0.05 * ((x / 400) * 400 - self.right_speed) + self.RI + (
                 0.001 * (self.prev_r_speed - self.right_speed) / (self.mark_now - mark_early))) * 0.00134
+        #calculate the derivative
+        right_deriv = deriv(self.prev_time, mark_early, self.prev_r_speed, self.right_speed)
+        #Derivative term
+        self.alphaR += (right_deriv)*0.001
+        
         # record speed
+        self.prev_time = time()
         self.prev_l_speed = self.left_speed
         self.prev_r_speed = self.right_speed
 
@@ -493,7 +521,19 @@ while runtime_loop:
         robot.stop()
         sleep(2)
         _, forward = robot.check()
+        prev_cam_width = 1000
         while(forward > 30):
+            width, loc, info, bbox = robot.get_image()
+            #still too close to QR
+            if width > 350:
+                robot.drive_left_motor(-0.30)
+                robot.drive_right_motor(-0.15)
+
+            #sensor fusion - both USDS and camera
+            if width > last_width:
+                forwad = 0
+            last_width = width
+                
             robot.forward_PID(200, False)
             _, forward = robot.check()
         robot.stop()
@@ -507,10 +547,20 @@ while runtime_loop:
 
     #default state: move forward
     if robot.stage == 0:
+        #adjust speeds to QR
+        if loc > 360:
+            robot.alphaL += 0.0001
+            robot.alphaR -= 0.0001
+        elif loc < 360 and loc != -1:
+            robot.alphaL -= 0.0001
+            robot.alphaR += 0.0001
+
+        #use PID
         if time() - robot.action_time > 3:
             robot.forward_PID(400, True)
         else:
             robot.forward_PID(400, False)
+            
 
 # take care of the robot
 robot.cleanup()
